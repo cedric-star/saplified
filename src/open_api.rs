@@ -253,8 +253,6 @@ fn rm_starting_spaces(line: String) -> String {
 }
 
 fn rm_yml_key(line: String) -> String {
-    println!("rm key from: {line}");
-
     let mut copying = false;
     let mut new_line = if line.starts_with(" ") { rm_starting_spaces(line) } else { line };
     let mut finished_line = String::new();
@@ -263,13 +261,10 @@ fn rm_yml_key(line: String) -> String {
         if !copying && c == ' ' { copying = true; }
     }
 
-    println!("rm key to  : {finished_line}");
     finished_line
 }
 
 fn yml_list_2_vec(yml: String) -> Vec<String> {
-    println!("list: \n{yml}");
-
     let mut new_yml = yml
         .lines()
         .into_iter()
@@ -301,7 +296,5 @@ fn yml_list_2_vec(yml: String) -> Vec<String> {
 
     if !yml_list.is_empty() { yml_list.remove(0); }
 
-    println!("list: \n{new_yml}");
-    println!("list: \n{:?}", yml_list);
     yml_list
 }
