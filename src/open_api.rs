@@ -44,11 +44,11 @@ impl OpenApi {
 
     pub fn to_string(&self) -> String {
         format!(
-            "{},\n{}, \n{:?}, \n{:?}",
+            "openapi: {}\n{} \nservers:\n{} \npaths:\n{}",
             self.openapi,
             self.info.to_string(),
-            self.servers,
-            self.paths
+            self.servers.iter().map(|s| s.to_string()).collect::<Vec<String>>().join("\n"),
+            self.paths.iter().map(|p| p.to_string()).collect::<Vec<String>>().join("\n")
         )
     }
 
@@ -72,9 +72,7 @@ impl OpenApi {
         let mut iter_paths = false;
 
         for (i, line) in yml.lines().enumerate() {
-            println!("{i}:   {line}");
-
-        // define current state
+            // define current state
             if line.starts_with("openapi: ") { openapi_str.push_str(rm_yml_key(line.to_string()).as_str()); }
             else if line.starts_with("info") { iter_info = true; }
             else if line.starts_with("servers") { iter_servers = true; iter_info = false;}
@@ -115,7 +113,7 @@ impl OpenApiInfo {
 
     fn to_string(&self) -> String {
         format!(
-            "OpenApiInfo {{ title: {}, description: {}, version: {} }}",
+            "info:\n  title: {}\n  description: {}\n  version: {}",
             self.title, self.description, self.version
         )
     }
@@ -131,7 +129,6 @@ impl OpenApiInfo {
     fn from_yml_string(yml: String) -> OpenApiInfo {
         let mut info = OpenApiInfo::default();
 
-        println!("got string in info: {yml}");
         for line in yml.lines() {
             let line = rm_starting_spaces(line.to_string());
             if line.starts_with("title:") { info.title = rm_yml_key(line); }
@@ -153,7 +150,7 @@ impl OpenApiServer {
 
     fn to_string(&self) -> String {
         format!(
-            "OpenApiServer {{ url: {}, description: {} }}",
+            "  - url: {}\n    description: {}",
             self.url, self.description
         )
     }
@@ -167,7 +164,14 @@ impl OpenApiServer {
 
     fn from_yml_string(yml: String) -> OpenApiServer {
 
-        OpenApiServer::default()
+        let mut server = OpenApiServer::default();
+
+        for line in yml.lines() {
+            let l = rm_starting_spaces(line.to_string());
+            if l.starts_with("url:") { server.url = rm_yml_key(l); }
+            else if l.starts_with("description") { server.description = rm_yml_key(l); }
+        }
+        server
     }
 }
 
@@ -266,5 +270,38 @@ fn rm_yml_key(line: String) -> String {
 fn yml_list_2_vec(yml: String) -> Vec<String> {
     println!("list: \n{yml}");
 
-    Vec::new()
+    let mut new_yml = yml
+        .lines()
+        .into_iter()
+        .map(|l| rm_starting_spaces(l.to_string()))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    let mut yml_list: Vec<String> = Vec::new();
+    let mut to_append = String::new();
+    for line in new_yml.lines() {
+        if line.starts_with("-") {
+            if !to_append.is_empty() {
+                yml_list.push(to_append.clone());
+                to_append.clear();
+            }
+
+            to_append.push_str(&line.chars().skip(1).collect::<String>());
+            //to_append.push_str(rm_starting_spaces(line.to_string()).as_str());
+            to_append.push('\n');
+
+        } else {
+            to_append.push_str(rm_starting_spaces(line.to_string()).as_str());
+        }
+    }
+
+    if !to_append.is_empty() {
+        yml_list.push(to_append);
+    }
+
+    if !yml_list.is_empty() { yml_list.remove(0); }
+
+    println!("list: \n{new_yml}");
+    println!("list: \n{:?}", yml_list);
+    yml_list
 }
