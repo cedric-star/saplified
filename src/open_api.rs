@@ -28,13 +28,15 @@ pub struct OpenApiMethod {
     method: String,
     summary: String,
     description: String,
+    body: (String, String),
+    header: Vec<(String, String)>,
     responses: Vec<OpenApiResponse>,
 }
 #[derive(Debug)]
 pub struct OpenApiResponse {
     code: String,
     description: String,
-    content: String,
+    content: (String, String),
 }
 
 pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
@@ -222,10 +224,12 @@ impl OpenApiPath {
 impl OpenApiMethod {
     fn to_string(&self) -> String {
         format!(
-            "    {}:\n      summary: {}\n      description: {}\n      responses: {}",
+            "    {}:\n      summary: {}\n      description: {}\n      requestBody:\n        {:?}\n      header: {:?}\n      responses: {}",
             self.method,
             self.summary,
             self.description,
+            self.body,
+            self.header,
             self.responses.iter().map(|r| r.to_string()).collect::<Vec<String>>().join("\n")
         )
     }
@@ -235,6 +239,8 @@ impl OpenApiMethod {
             method: String::new(),
             summary: String::new(),
             description: String::new(),
+            body: (String::new(), String::new()),
+            header: Vec::new(),
             responses: Vec::new(),
         }
     }
@@ -294,7 +300,7 @@ impl OpenApiMethod {
 
 impl OpenApiResponse {
     fn to_string(&self) -> String {
-        format!("        \"{}\"\n          description: {}\n          content: {}",
+        format!("\n        \"{}\"\n          description: {}\n          content: {:?}",
             self.code,
             self.description,
             self.content,
@@ -305,25 +311,34 @@ impl OpenApiResponse {
         OpenApiResponse {
             code: String::new(),
             description: String::new(),
-            content: String::new(),
+            content: (String::new(), String::new()),
         }
     }
 
     fn from_yml_string(yml: String) -> OpenApiResponse {
+        println!("yml response\n{yml}");
         let mut response = OpenApiResponse::default();
 
         let re = Regex::new(r#"^"([0-9]{3})""#).unwrap();
 
+        let mut reading_content = false;
+        let mut content_str = String::new();
+
         for l in yml.lines() {
+            if reading_content {
+                content_str.push_str(l);
+            }
+
             if let Some(caps) = re.captures(l) {
                 response.code = caps[1].to_string();
             } else if l.starts_with("description:") {
                 response.description = rm_yml_key(l.to_string());
             } else if l.starts_with("content:") {
-                response.content = rm_yml_key(l.to_string());
+                reading_content = true;
             }
         }
 
+        response.content = split_until_first_char(content_str, ':');
         response
     }
 }
@@ -388,4 +403,21 @@ fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
 }
 fn yml_list_2_vec(yml: String) -> Vec<String> {
     yml_list_2_vec_by_separator(yml, "-")
+}
+
+fn split_until_first_char(str: String, c: char) -> (String, String) {
+    let mut fst = String::new();
+    let mut snd = String::new();
+
+    let mut is_fst = true;
+    for char in str.chars() {
+        if char == c && is_fst {
+            is_fst = false;
+            continue;
+        }
+        if is_fst { fst.push(char); }
+        else { snd.push(char); }
+    }
+
+    (fst, snd)
 }
