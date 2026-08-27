@@ -1,0 +1,270 @@
+#[derive(Debug)]
+pub struct OpenApi {
+    pub openapi: String,
+    pub info: OpenApiInfo,
+    pub servers: Vec<OpenApiServer>,
+    pub paths: Vec<OpenApiPath>,
+}
+#[derive(Debug)]
+pub struct OpenApiInfo {
+    title: String,
+    description: String,
+    version: String
+}
+#[derive(Debug)]
+pub struct OpenApiServer {
+    url: String,
+    description: String,
+}
+#[derive(Debug)]
+pub struct OpenApiPath {
+    path: String,
+    methods: Vec<OpenApiMethod>,
+}
+#[derive(Debug)]
+pub struct OpenApiMethod {
+    summary: String,
+    description: String,
+    responses: Vec<OpenApiResponse>,
+}
+#[derive(Debug)]
+pub struct OpenApiResponse {
+    code: String,
+}
+
+impl OpenApi {
+    fn new(openapi: String, info: OpenApiInfo, servers: Vec<OpenApiServer>, paths: Vec<OpenApiPath>) -> OpenApi {
+        OpenApi {
+            openapi,
+            info,
+            servers,
+            paths,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        format!(
+            "{},\n{}, \n{:?}, \n{:?}",
+            self.openapi,
+            self.info.to_string(),
+            self.servers,
+            self.paths
+        )
+    }
+
+    fn default() -> OpenApi {
+        OpenApi {
+            openapi: String::new(),
+            info: OpenApiInfo::default(),
+            servers: Vec::new(),
+            paths: Vec::new(),
+        }
+    }
+
+    pub fn from_yml_string(yml: &String) -> OpenApi {
+        let mut openapi_str = String::new();
+        let mut info_str = String::new();
+        let mut servers_str = String::new();
+        let mut paths_str = String::new();
+
+        let mut iter_info = false;
+        let mut iter_servers = false;
+        let mut iter_paths = false;
+
+        for (i, line) in yml.lines().enumerate() {
+            println!("{i}:   {line}");
+
+        // define current state
+            if line.starts_with("openapi: ") { openapi_str.push_str(rm_yml_key(line.to_string()).as_str()); }
+            else if line.starts_with("info") { iter_info = true; }
+            else if line.starts_with("servers") { iter_servers = true; iter_info = false;}
+            else if line.starts_with("paths:") { iter_paths = true; iter_servers = false; }
+
+            if iter_info { info_str.push_str(line); info_str.push('\n'); }
+            else if iter_servers { servers_str.push_str(line); servers_str.push('\n'); }
+            else if iter_paths { paths_str.push_str(line); paths_str.push('\n'); }
+
+        }
+
+        // prepare structs for filling with strings
+        let mut info = OpenApiInfo::from_yml_string(info_str);
+        let mut servers = yml_list_2_vec(servers_str)
+            .into_iter()
+            .map(|item| OpenApiServer::from_yml_string(item))
+            .collect();
+        let mut paths = Vec::new();
+
+        OpenApi {
+            openapi: openapi_str,
+            info: info,
+            servers: servers,
+            paths: paths,
+        }
+
+    }
+}
+
+impl OpenApiInfo {
+    fn new(title: String, description: String, version: String) -> OpenApiInfo {
+        OpenApiInfo {
+            title,
+            description,
+            version,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!(
+            "OpenApiInfo {{ title: {}, description: {}, version: {} }}",
+            self.title, self.description, self.version
+        )
+    }
+
+    fn default() -> OpenApiInfo {
+        OpenApiInfo {
+            title: String::new(),
+            description: String::new(),
+            version: String::new(),
+        }
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiInfo {
+        let mut info = OpenApiInfo::default();
+
+        println!("got string in info: {yml}");
+        for line in yml.lines() {
+            let line = rm_starting_spaces(line.to_string());
+            if line.starts_with("title:") { info.title = rm_yml_key(line); }
+            else if line.starts_with("description:") { info.description = rm_yml_key(line); }
+            else if line.starts_with("version:") {info.version = rm_yml_key(line); }
+        }
+
+        info
+    }
+}
+
+impl OpenApiServer {
+    fn new(url: String, description: String) -> OpenApiServer {
+        OpenApiServer {
+            url,
+            description,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!(
+            "OpenApiServer {{ url: {}, description: {} }}",
+            self.url, self.description
+        )
+    }
+
+    fn default() -> OpenApiServer {
+        OpenApiServer {
+            url: String::new(),
+            description: String::new(),
+        }
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiServer {
+
+        OpenApiServer::default()
+    }
+}
+
+impl OpenApiPath {
+    fn new(path: String, methods: Vec<OpenApiMethod>) -> OpenApiPath {
+        OpenApiPath {
+            path,
+            methods,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!(
+            "OpenApiPath {{ path: {}, methods: {:?} }}",
+            self.path, self.methods
+        )
+    }
+
+    fn default() -> OpenApiPath {
+        OpenApiPath {
+            path: String::new(),
+            methods: Vec::new(),
+        }
+    }
+}
+
+impl OpenApiMethod {
+    fn new(summary: String, description: String, responses: Vec<OpenApiResponse>) -> OpenApiMethod {
+        OpenApiMethod {
+            summary,
+            description,
+            responses,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!(
+            "OpenApiMethod {{ summary: {}, description: {}, responses: {:?} }}",
+            self.summary, self.description, self.responses
+        )
+    }
+
+    fn default() -> OpenApiMethod {
+        OpenApiMethod {
+            summary: String::new(),
+            description: String::new(),
+            responses: Vec::new(),
+        }
+    }
+}
+
+impl OpenApiResponse {
+    fn new(code: String) -> OpenApiResponse {
+        OpenApiResponse {
+            code,
+        }
+    }
+
+    fn to_string(&self) -> String {
+        format!("OpenApiResponse {{ code: {} }}", self.code)
+    }
+    fn default() -> OpenApiResponse {
+        OpenApiResponse {
+            code: String::new(),
+        }
+    }
+}
+
+fn rm_starting_spaces(line: String) -> String {
+    let mut new_line = String::new();
+    let mut copying = false;
+    for c in line.chars() {
+        if c != ' ' { copying = true; }
+        if copying { new_line.push(c); }
+
+    }
+
+    new_line
+}
+
+fn rm_yml_key(line: String) -> String {
+    println!("rm key from: {line}");
+
+    let mut copying = false;
+    let mut new_line = if line.starts_with(" ") { rm_starting_spaces(line) } else { line };
+    let mut finished_line = String::new();
+    for c in new_line.chars() {
+        if copying { finished_line.push(c); }
+        if !copying && c == ' ' { copying = true; }
+    }
+
+    println!("rm key to  : {finished_line}");
+    finished_line
+}
+
+fn yml_list_2_vec(yml: String) -> Vec<String> {
+    println!("list: \n{yml}");
+
+    Vec::new()
+}
