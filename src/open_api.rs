@@ -88,9 +88,12 @@ impl OpenApi {
         let mut info = OpenApiInfo::from_yml_string(info_str);
         let mut servers = yml_list_2_vec(servers_str)
             .into_iter()
-            .map(|item| OpenApiServer::from_yml_string(item))
+            .map(|server| OpenApiServer::from_yml_string(server))
             .collect();
-        let mut paths = Vec::new();
+        let mut paths = yml_list_2_vec_by_separator(paths_str, "/")
+            .into_iter()
+            .map(|path| OpenApiPath::from_yml_string(path))
+            .collect();
 
         OpenApi {
             openapi: openapi_str,
@@ -196,6 +199,11 @@ impl OpenApiPath {
             methods: Vec::new(),
         }
     }
+
+    fn from_yml_string(yml: String) -> OpenApiPath {
+        println!("pathdd:\n{yml}\n\n");
+        OpenApiPath::default()
+    }
 }
 
 impl OpenApiMethod {
@@ -263,8 +271,7 @@ fn rm_yml_key(line: String) -> String {
 
     finished_line
 }
-
-fn yml_list_2_vec(yml: String) -> Vec<String> {
+fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
     let mut new_yml = yml
         .lines()
         .into_iter()
@@ -275,7 +282,7 @@ fn yml_list_2_vec(yml: String) -> Vec<String> {
     let mut yml_list: Vec<String> = Vec::new();
     let mut to_append = String::new();
     for line in new_yml.lines() {
-        if line.starts_with("-") {
+        if line.starts_with(separator) {
             if !to_append.is_empty() {
                 yml_list.push(to_append.clone());
                 to_append.clear();
@@ -297,4 +304,7 @@ fn yml_list_2_vec(yml: String) -> Vec<String> {
     if !yml_list.is_empty() { yml_list.remove(0); }
 
     yml_list
+}
+fn yml_list_2_vec(yml: String) -> Vec<String> {
+    yml_list_2_vec_by_separator(yml, "-")
 }
