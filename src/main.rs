@@ -18,9 +18,7 @@ fn main() {
         .args(&my_curl.args)
         .output()
         .expect("curl fehlgeschlagen");
-
-    let output = str::from_utf8(&response.stdout).expect("converting to utf8 failed");
-
+    println!("{:?}", response);
     let path = String::from("./api.yml");
     let yml = read_yml(&path);
 

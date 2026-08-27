@@ -40,15 +40,6 @@ pub struct OpenApiResponse {
 pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
 
 impl OpenApi {
-    fn new(openapi: String, info: OpenApiInfo, servers: Vec<OpenApiServer>, paths: Vec<OpenApiPath>) -> OpenApi {
-        OpenApi {
-            openapi,
-            info,
-            servers,
-            paths,
-        }
-    }
-
     pub fn to_string(&self) -> String {
         format!(
             "openapi: {}\n{} \nservers:\n{} \npaths:\n{}",
@@ -57,15 +48,6 @@ impl OpenApi {
             self.servers.iter().map(|s| s.to_string()).collect::<Vec<String>>().join("\n"),
             self.paths.iter().map(|p| p.to_string()).collect::<Vec<String>>().join("\n")
         )
-    }
-
-    fn default() -> OpenApi {
-        OpenApi {
-            openapi: String::new(),
-            info: OpenApiInfo::default(),
-            servers: Vec::new(),
-            paths: Vec::new(),
-        }
     }
 
     pub fn from_yml_string(yml: &String) -> OpenApi {
@@ -78,7 +60,7 @@ impl OpenApi {
         let mut iter_servers = false;
         let mut iter_paths = false;
 
-        for (i, line) in yml.lines().enumerate() {
+        for line in yml.lines() {
             // define current state
             if line.starts_with("openapi: ") { openapi_str.push_str(rm_yml_key(line.to_string()).as_str()); }
             else if line.starts_with("info") { iter_info = true; }
@@ -92,12 +74,12 @@ impl OpenApi {
         }
 
         // prepare structs for filling with strings
-        let mut info = OpenApiInfo::from_yml_string(info_str);
-        let mut servers = yml_list_2_vec(servers_str)
+        let info = OpenApiInfo::from_yml_string(info_str);
+        let servers = yml_list_2_vec(servers_str)
             .into_iter()
             .map(|server| OpenApiServer::from_yml_string(server))
             .collect();
-        let mut paths = yml_list_2_vec_by_separator(paths_str, "/")
+        let paths = yml_list_2_vec_by_separator(paths_str, "/")
             .into_iter()
             .map(|path| OpenApiPath::from_yml_string(path))
             .collect();
@@ -113,14 +95,6 @@ impl OpenApi {
 }
 
 impl OpenApiInfo {
-    fn new(title: String, description: String, version: String) -> OpenApiInfo {
-        OpenApiInfo {
-            title,
-            description,
-            version,
-        }
-    }
-
     fn to_string(&self) -> String {
         format!(
             "info:\n  title: {}\n  description: {}\n  version: {}",
@@ -151,13 +125,6 @@ impl OpenApiInfo {
 }
 
 impl OpenApiServer {
-    fn new(url: String, description: String) -> OpenApiServer {
-        OpenApiServer {
-            url,
-            description,
-        }
-    }
-
     fn to_string(&self) -> String {
         format!(
             "  - url: {}\n    description: {}",
@@ -186,13 +153,6 @@ impl OpenApiServer {
 }
 
 impl OpenApiPath {
-    fn new(path: String, methods: Vec<OpenApiMethod>) -> OpenApiPath {
-        OpenApiPath {
-            path,
-            methods,
-        }
-    }
-
     fn to_string(&self) -> String {
         format!(
             "  /{}:\n{}",
@@ -210,7 +170,6 @@ impl OpenApiPath {
     }
 
     fn from_yml_string(yml: String) -> OpenApiPath {
-        let mut path = OpenApiPath::default();
         let mut path_str = String::new();
         for c in yml.chars() {
             if c == ':' { break; }
@@ -249,26 +208,18 @@ impl OpenApiPath {
         if !method_str.is_empty() {
             method_list.push(method_str);
         }
-        OpenApiPath::new(
-            path_str,
-            method_list
-                .into_iter()
-                .map(|s| OpenApiMethod::from_yml_string(s))
-                .collect::<Vec<OpenApiMethod>>(),
-        )
+        let mut path = OpenApiPath::default();
+        path.path = path_str;
+        path.methods = method_list
+            .into_iter()
+            .map(|s| OpenApiMethod::from_yml_string(s))
+            .collect::<Vec<OpenApiMethod>>();
+
+        path
     }
 }
 
 impl OpenApiMethod {
-    fn new(method: String, summary: String, description: String, responses: Vec<OpenApiResponse>) -> OpenApiMethod {
-        OpenApiMethod {
-            method,
-            summary,
-            description,
-            responses,
-        }
-    }
-
     fn to_string(&self) -> String {
         format!(
             "    {}:\n      summary: {}\n      description: {}\n      responses: {}",
@@ -342,14 +293,6 @@ impl OpenApiMethod {
 }
 
 impl OpenApiResponse {
-    fn new(code: String, description: String, content: String) -> OpenApiResponse {
-        OpenApiResponse {
-            code,
-            description,
-            content,
-        }
-    }
-
     fn to_string(&self) -> String {
         format!("        \"{}\"\n          description: {}\n          content: {}",
             self.code,
@@ -399,7 +342,7 @@ fn rm_starting_spaces(line: String) -> String {
 
 fn rm_yml_key(line: String) -> String {
     let mut copying = false;
-    let mut new_line = if line.starts_with(" ") { rm_starting_spaces(line) } else { line };
+    let new_line = if line.starts_with(" ") { rm_starting_spaces(line) } else { line };
     let mut finished_line = String::new();
     for c in new_line.chars() {
         if copying { finished_line.push(c); }
@@ -409,7 +352,7 @@ fn rm_yml_key(line: String) -> String {
     finished_line
 }
 fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
-    let mut new_yml = yml
+    let new_yml = yml
         .lines()
         .into_iter()
         .map(|l| rm_starting_spaces(l.to_string()))
