@@ -12,7 +12,7 @@ paths:
   /users:
     get:
       summary: get all users
-      descritpion: hallsjdflsajdlöfjsdljfljdf
+      description: hallsjdflsajdlöfjsdljfljdf
       responses:
         "200":
           description: all good
@@ -37,7 +37,7 @@ paths:
   /locations:
     get:
       summary: get all locations
-      descritpion: hasljddddddddddddddddsdljfljdf
+      description: hasljddddddddddddddddsdljfljdf
       responses:
         "200":
           description: all goooooooood

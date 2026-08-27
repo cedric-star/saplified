@@ -1,3 +1,5 @@
+use regex::Regex;
+
 #[derive(Debug)]
 pub struct OpenApi {
     pub openapi: String,
@@ -31,6 +33,8 @@ pub struct OpenApiMethod {
 #[derive(Debug)]
 pub struct OpenApiResponse {
     code: String,
+    description: String,
+    content: String,
 }
 
 pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
@@ -267,8 +271,11 @@ impl OpenApiMethod {
 
     fn to_string(&self) -> String {
         format!(
-            "    {}:\n      summary: {}\n      description: {}\n      responses: {:?}",
-            self.method, self.summary, self.description, self.responses
+            "    {}:\n      summary: {}\n      description: {}\n      responses: {}",
+            self.method,
+            self.summary,
+            self.description,
+            self.responses.iter().map(|r| r.to_string()).collect::<Vec<String>>().join("\n")
         )
     }
 
@@ -282,11 +289,15 @@ impl OpenApiMethod {
     }
 
     fn from_yml_string(yml: String) -> OpenApiMethod {
-        println!("myyyyyy method:\n{yml}\n");
-
         let mut method = OpenApiMethod::default();
 
+        let mut res_list: Vec<String> = Vec::new();
+        let mut res_str = String::new();
+        let mut in_responses = false;
+
         for l in yml.lines() {
+            let mut is_new_res = false;
+
             if method.method.is_empty() {
                 'inner: for http_method in HTPP_METHODS {
                     if l.starts_with(http_method) {
@@ -296,28 +307,81 @@ impl OpenApiMethod {
                 }
             }
 
-            if l.starts_with("summary:") { method.summary = rm_yml_key(l.to_string()); }
-            if l.starts_with("description") { method.description = rm_yml_key(l.to_string()); }
+            if l.starts_with("responses:") { in_responses = true; }
 
+            if !in_responses {
+                if l.starts_with("summary:") { method.summary = rm_yml_key(l.to_string()); }
+                if l.starts_with("description") { method.description = rm_yml_key(l.to_string()); }
+            }
+
+            let re = Regex::new(r#"^"[0-9]{3}""#).unwrap();
+            if re.is_match(l) {
+                is_new_res = true;
+            }
+
+            if is_new_res && !res_str.is_empty() {
+                res_list.push(res_str.clone());
+                res_str.clear();
+            }
+            res_str.push_str(l);
+            res_str.push('\n');
         }
+
+        if !res_str.is_empty() {
+            res_list.push(res_str);
+        }
+
+        method.responses = res_list
+            .into_iter()
+            .skip(1) // erster Block ist Vorspann (get:/summary:/description:/responses:), kein echter Response
+            .map(|r| OpenApiResponse::from_yml_string(r))
+            .collect::<Vec<OpenApiResponse>>();
+
         method
     }
 }
 
 impl OpenApiResponse {
-    fn new(code: String) -> OpenApiResponse {
+    fn new(code: String, description: String, content: String) -> OpenApiResponse {
         OpenApiResponse {
             code,
+            description,
+            content,
         }
     }
 
     fn to_string(&self) -> String {
-        format!("OpenApiResponse {{ code: {} }}", self.code)
+        format!("        \"{}\"\n          description: {}\n          content: {}",
+            self.code,
+            self.description,
+            self.content,
+        )
+
     }
     fn default() -> OpenApiResponse {
         OpenApiResponse {
             code: String::new(),
+            description: String::new(),
+            content: String::new(),
         }
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiResponse {
+        let mut response = OpenApiResponse::default();
+
+        let re = Regex::new(r#"^"([0-9]{3})""#).unwrap();
+
+        for l in yml.lines() {
+            if let Some(caps) = re.captures(l) {
+                response.code = caps[1].to_string();
+            } else if l.starts_with("description:") {
+                response.description = rm_yml_key(l.to_string());
+            } else if l.starts_with("content:") {
+                response.content = rm_yml_key(l.to_string());
+            }
+        }
+
+        response
     }
 }
 
