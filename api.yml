@@ -22,3 +22,30 @@ paths:
                 type: array
                 items:
                   type: string
+        "403":
+          description: forbidden content
+    post:
+      summary: dinge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+  /locations:
+    get:
+      summary: get all locations
+      descritpion: hasljddddddddddddddddsdljfljdf
+      responses:
+        "200":
+          description: all goooooooood
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        "404":
+          description: not foound

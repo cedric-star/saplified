@@ -23,6 +23,7 @@ pub struct OpenApiPath {
 }
 #[derive(Debug)]
 pub struct OpenApiMethod {
+    method: String,
     summary: String,
     description: String,
     responses: Vec<OpenApiResponse>,
@@ -31,6 +32,8 @@ pub struct OpenApiMethod {
 pub struct OpenApiResponse {
     code: String,
 }
+
+pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
 
 impl OpenApi {
     fn new(openapi: String, info: OpenApiInfo, servers: Vec<OpenApiServer>, paths: Vec<OpenApiPath>) -> OpenApi {
@@ -188,8 +191,10 @@ impl OpenApiPath {
 
     fn to_string(&self) -> String {
         format!(
-            "OpenApiPath {{ path: {}, methods: {:?} }}",
-            self.path, self.methods
+            "  /{}:\n{}",
+            self.path,
+            self.methods.iter().map(|m| m.to_string()).collect::<Vec<String>>().join("\n")
+
         )
     }
 
@@ -201,14 +206,59 @@ impl OpenApiPath {
     }
 
     fn from_yml_string(yml: String) -> OpenApiPath {
-        println!("pathdd:\n{yml}\n\n");
-        OpenApiPath::default()
+        let mut path = OpenApiPath::default();
+        let mut path_str = String::new();
+        for c in yml.chars() {
+            if c == ':' { break; }
+            path_str.push(c);
+        }
+
+        //remove path name from rest
+        let methods_str: String = yml
+            .lines()
+            .into_iter()
+            .skip(1)
+            .map(|s| String::from(s))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        let mut method_list: Vec<String> = Vec::new();
+        let mut method_str = String::new();
+        for l in methods_str.lines() {
+            let mut is_new_method = false;
+            for http_method in HTPP_METHODS {
+                if l.starts_with(http_method) {
+                    is_new_method = true;
+                    break;
+                }
+            }
+
+            if is_new_method && !method_str.is_empty() {
+                method_list.push(method_str.clone());
+                method_str.clear();
+            }
+
+            method_str.push_str(l);
+            method_str.push('\n');
+        }
+
+        if !method_str.is_empty() {
+            method_list.push(method_str);
+        }
+        OpenApiPath::new(
+            path_str,
+            method_list
+                .into_iter()
+                .map(|s| OpenApiMethod::from_yml_string(s))
+                .collect::<Vec<OpenApiMethod>>(),
+        )
     }
 }
 
 impl OpenApiMethod {
-    fn new(summary: String, description: String, responses: Vec<OpenApiResponse>) -> OpenApiMethod {
+    fn new(method: String, summary: String, description: String, responses: Vec<OpenApiResponse>) -> OpenApiMethod {
         OpenApiMethod {
+            method,
             summary,
             description,
             responses,
@@ -217,17 +267,40 @@ impl OpenApiMethod {
 
     fn to_string(&self) -> String {
         format!(
-            "OpenApiMethod {{ summary: {}, description: {}, responses: {:?} }}",
-            self.summary, self.description, self.responses
+            "    {}:\n      summary: {}\n      description: {}\n      responses: {:?}",
+            self.method, self.summary, self.description, self.responses
         )
     }
 
     fn default() -> OpenApiMethod {
         OpenApiMethod {
+            method: String::new(),
             summary: String::new(),
             description: String::new(),
             responses: Vec::new(),
         }
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiMethod {
+        println!("myyyyyy method:\n{yml}\n");
+
+        let mut method = OpenApiMethod::default();
+
+        for l in yml.lines() {
+            if method.method.is_empty() {
+                'inner: for http_method in HTPP_METHODS {
+                    if l.starts_with(http_method) {
+                        method.method = http_method.to_string();
+                        break 'inner;
+                    }
+                }
+            }
+
+            if l.starts_with("summary:") { method.summary = rm_yml_key(l.to_string()); }
+            if l.starts_with("description") { method.description = rm_yml_key(l.to_string()); }
+
+        }
+        method
     }
 }
 
@@ -294,6 +367,7 @@ fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
 
         } else {
             to_append.push_str(rm_starting_spaces(line.to_string()).as_str());
+            to_append.push('\n');
         }
     }
 
