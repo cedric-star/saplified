@@ -28,15 +28,28 @@ pub struct OpenApiMethod {
     method: String,
     summary: String,
     description: String,
-    body: (String, String),
-    header: Vec<(String, String)>,
+    body: OpenApiRequestBody,
+    header: Vec<OpenApiHeader>,
     responses: Vec<OpenApiResponse>,
+}
+#[derive(Debug)]
+pub struct OpenApiRequestBody {
+    required: bool,
+    content_type: String,
+}
+#[derive(Debug)]
+pub struct OpenApiHeader {
+    name: String,
+    description: String,
+    header_type: String,
+    example: String,
 }
 #[derive(Debug)]
 pub struct OpenApiResponse {
     code: String,
     description: String,
-    content: (String, String),
+    content_type: String,
+    headers: Vec<OpenApiHeader>,
 }
 
 pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
@@ -44,7 +57,7 @@ pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "pa
 impl OpenApi {
     pub fn to_string(&self) -> String {
         format!(
-            "openapi: {}\n{} \nservers:\n{} \npaths:\n{}",
+            "openapi: {}\n{}\nservers:\n{}\npaths:\n{}",
             self.openapi,
             self.info.to_string(),
             self.servers.iter().map(|s| s.to_string()).collect::<Vec<String>>().join("\n"),
@@ -192,7 +205,7 @@ impl OpenApiPath {
         for l in methods_str.lines() {
             let mut is_new_method = false;
             for http_method in HTPP_METHODS {
-                if l.starts_with(http_method) {
+                if l.starts_with(&format!("{}:", http_method)) {
                     is_new_method = true;
                     break;
                 }
@@ -235,19 +248,19 @@ impl OpenApiMethod {
             parts.push(format!("      description: {}", self.description));
         }
 
-        if !self.body.0.is_empty() || !self.body.1.is_empty() {
-            parts.push("      requestBody:".to_string());
-            parts.push("        content:".to_string());
-            if !self.body.0.is_empty() {
-                parts.push(format!("            {}:", self.body.0));
-            }
-            if !self.body.1.is_empty() {
-                parts.push("              schema: {}".to_string());
-            }
+        if !self.header.is_empty() {
+            parts.push("      headers:".to_string());
+            parts.push(
+                self.header
+                    .iter()
+                    .map(|h| h.to_string(8))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
         }
 
-        if !self.header.is_empty() {
-            parts.push(format!("      headers: {:?}", self.header));
+        if !self.body.is_empty() {
+            parts.push(self.body.to_string());
         }
 
         if !self.responses.is_empty() {
@@ -269,7 +282,7 @@ impl OpenApiMethod {
             method: String::new(),
             summary: String::new(),
             description: String::new(),
-            body: (String::new(), String::new()),
+            body: OpenApiRequestBody::default(),
             header: Vec::new(),
             responses: Vec::new(),
         }
@@ -285,43 +298,77 @@ impl OpenApiMethod {
         let mut reading_body = false;
         let mut body_str = String::new();
 
+        let mut reading_headers = false;
+        let mut header_list: Vec<String> = Vec::new();
+        let mut header_block = String::new();
+
+        let re = Regex::new(r#"^"[0-9]{3}""#).unwrap();
+
         for l in yml.lines() {
-            if reading_body {
-                body_str.push_str(l);
-                body_str.push('\n');
-            }
-            let mut is_new_res = false;
 
             if method.method.is_empty() {
                 'inner: for http_method in HTPP_METHODS {
-                    if l.starts_with(http_method) {
+                    if l.starts_with(&format!("{}:", http_method)) {
                         method.method = http_method.to_string();
                         break 'inner;
                     }
                 }
             }
 
-            if l.starts_with("requestBody") { reading_body = true; }
+            // section switches - decide BEFORE deciding where this line belongs
+            // "headers:" gehört nur zur Methode, wenn wir uns noch NICHT in responses: befinden -
+            // sonst ist es ein Response-Header (responses.<code>.headers) und wird dort geparst
+            if l.starts_with("headers:") && !in_responses {
+                reading_headers = true;
+                reading_body = false;
+            } else if l.starts_with("requestBody") {
+                reading_body = true;
+                if reading_headers { flush_header_block(&mut header_list, &mut header_block); }
+                reading_headers = false;
+            }
             if l.starts_with("responses:") {
                 in_responses = true;
                 reading_body = false;
+                if reading_headers { flush_header_block(&mut header_list, &mut header_block); }
+                reading_headers = false;
             }
 
-            if !in_responses {
+            if reading_body {
+                body_str.push_str(l);
+                body_str.push('\n');
+            }
+
+            if reading_headers && !l.starts_with("headers:") {
+                let trimmed = l.trim();
+                if !trimmed.is_empty() {
+                    // eine neue Headerzeile (z.B. "X-Response-ID:") erkennt man daran,
+                    // dass sie mit ':' endet und keine der bekannten Eigenschaften ist
+                    let is_new_header = trimmed.ends_with(':')
+                        && !trimmed.starts_with("description:")
+                        && !trimmed.starts_with("type:")
+                        && !trimmed.starts_with("example:");
+
+                    if is_new_header {
+                        flush_header_block(&mut header_list, &mut header_block);
+                    }
+
+                    header_block.push_str(l);
+                    header_block.push('\n');
+                }
+            }
+
+            if !in_responses && !reading_headers {
                 if l.starts_with("summary:") { method.summary = rm_yml_key(l.to_string()); }
                 if l.starts_with("description") { method.description = rm_yml_key(l.to_string()); }
             }
 
-            let re = Regex::new(r#"^"[0-9]{3}""#).unwrap();
-            if re.is_match(l) {
-                is_new_res = true;
-            }
+            let is_new_res = re.is_match(l);
 
             if is_new_res && !res_str.is_empty() {
                 res_list.push(res_str.clone());
                 res_str.clear();
             }
-            if !reading_body {
+            if !reading_body && !reading_headers {
                 res_str.push_str(l);
                 res_str.push('\n');
             }
@@ -330,9 +377,13 @@ impl OpenApiMethod {
         if !res_str.is_empty() {
             res_list.push(res_str);
         }
+        flush_header_block(&mut header_list, &mut header_block);
 
-        let body_content = return_yml_after_key(body_str, "content:");
-        method.body = split_until_first_char(body_content, ':');
+        method.body = OpenApiRequestBody::from_yml_string(body_str);
+        method.header = header_list
+            .into_iter()
+            .map(|h| OpenApiHeader::from_yml_string(h))
+            .collect();
 
         method.responses = res_list
             .into_iter()
@@ -344,6 +395,103 @@ impl OpenApiMethod {
     }
 }
 
+impl OpenApiRequestBody {
+    fn to_string(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+
+        parts.push("      requestBody:".to_string());
+
+        if self.required {
+            parts.push("        required: true".to_string());
+        }
+
+        if !self.content_type.is_empty() {
+            parts.push("        content:".to_string());
+            parts.push(format!("          {}: {{}}", self.content_type));
+        }
+
+        parts.join("\n")
+    }
+
+    fn default() -> OpenApiRequestBody {
+        OpenApiRequestBody {
+            required: false,
+            content_type: String::new(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        !self.required && self.content_type.is_empty()
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiRequestBody {
+        let mut body = OpenApiRequestBody::default();
+
+        for l in yml.lines() {
+            if l.starts_with("required:") {
+                let value = rm_yml_key(l.to_string());
+                body.required = value.trim() == "true";
+            }
+        }
+
+        let content_part = return_yml_after_key(yml, "content:");
+        body.content_type = first_yml_key(content_part);
+
+        body
+    }
+}
+
+impl OpenApiHeader {
+    // indent = Einrückung (Anzahl Leerzeichen) der Headername-Zeile selbst;
+    // Eigenschaften (description/type/example) werden 2 Zeichen tiefer eingerückt
+    fn to_string(&self, indent: usize) -> String {
+        let pad = " ".repeat(indent);
+        let pad_props = " ".repeat(indent + 2);
+
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(format!("{}{}:", pad, self.name));
+
+        if !self.description.is_empty() {
+            parts.push(format!("{}description: {}", pad_props, self.description));
+        }
+        if !self.header_type.is_empty() {
+            parts.push(format!("{}type: {}", pad_props, self.header_type));
+        }
+        if !self.example.is_empty() {
+            parts.push(format!("{}example: {}", pad_props, self.example));
+        }
+
+        parts.join("\n")
+    }
+
+    fn default() -> OpenApiHeader {
+        OpenApiHeader {
+            name: String::new(),
+            description: String::new(),
+            header_type: String::new(),
+            example: String::new(),
+        }
+    }
+
+    fn from_yml_string(yml: String) -> OpenApiHeader {
+        let mut header = OpenApiHeader::default();
+
+        for line in yml.lines() {
+            let l = line.trim();
+            if l.is_empty() { continue; }
+
+            if l.starts_with("description:") { header.description = rm_yml_key(l.to_string()); }
+            else if l.starts_with("type:") { header.header_type = rm_yml_key(l.to_string()); }
+            else if l.starts_with("example:") { header.example = rm_yml_key(l.to_string()); }
+            else if l.ends_with(':') && header.name.is_empty() {
+                header.name = l.trim_end_matches(':').to_string();
+            }
+        }
+
+        header
+    }
+}
+
 impl OpenApiResponse {
     fn to_string(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
@@ -352,8 +500,19 @@ impl OpenApiResponse {
         if !self.description.is_empty() {
             parts.push(format!("          description: {}", self.description));
         }
-        if !self.content.0.is_empty() || !self.content.1.is_empty() {
-            parts.push(format!("          content:\n            {}\n              schema: {{}}", self.content.0));
+        if !self.headers.is_empty() {
+            parts.push("          headers:".to_string());
+            parts.push(
+                self.headers
+                    .iter()
+                    .map(|h| h.to_string(12))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
+        }
+        if !self.content_type.is_empty() {
+            parts.push("          content:".to_string());
+            parts.push(format!("            {}: {{}}", self.content_type));
         }
 
         parts.join("\n")
@@ -362,12 +521,12 @@ impl OpenApiResponse {
         OpenApiResponse {
             code: String::new(),
             description: String::new(),
-            content: (String::new(), String::new()),
+            content_type: String::new(),
+            headers: Vec::new(),
         }
     }
 
     fn from_yml_string(yml: String) -> OpenApiResponse {
-        println!("yml response\n{yml}");
         let mut response = OpenApiResponse::default();
 
         let re = Regex::new(r#"^"([0-9]{3})""#).unwrap();
@@ -375,22 +534,70 @@ impl OpenApiResponse {
         let mut reading_content = false;
         let mut content_str = String::new();
 
+        let mut reading_headers = false;
+        let mut header_list: Vec<String> = Vec::new();
+        let mut header_block = String::new();
+
         for l in yml.lines() {
-            if reading_content {
-                content_str.push_str(l);
+            // section switches - "headers:" öffnet den Header-Block dieser Response,
+            // "content:" schließt ihn und öffnet den Content-Teil
+            if l.starts_with("headers:") {
+                reading_headers = true;
+            } else if l.starts_with("content:") {
+                if reading_headers { flush_header_block(&mut header_list, &mut header_block); }
+                reading_headers = false;
+                reading_content = true;
             }
 
-            if let Some(caps) = re.captures(l) {
-                response.code = caps[1].to_string();
-            } else if l.starts_with("description:") {
-                response.description = rm_yml_key(l.to_string());
-            } else if l.starts_with("content:") {
-                reading_content = true;
+            if reading_content && !l.starts_with("content:") {
+                content_str.push_str(l);
+                content_str.push('\n');
+            }
+
+            if reading_headers && !l.starts_with("headers:") {
+                let trimmed = l.trim();
+                if !trimmed.is_empty() {
+                    let is_new_header = trimmed.ends_with(':')
+                        && !trimmed.starts_with("description:")
+                        && !trimmed.starts_with("type:")
+                        && !trimmed.starts_with("example:");
+
+                    if is_new_header {
+                        flush_header_block(&mut header_list, &mut header_block);
+                    }
+
+                    header_block.push_str(l);
+                    header_block.push('\n');
+                }
+            }
+
+            if !reading_headers && !reading_content {
+                if let Some(caps) = re.captures(l) {
+                    response.code = caps[1].to_string();
+                } else if l.starts_with("description:") {
+                    response.description = rm_yml_key(l.to_string());
+                }
             }
         }
 
-        response.content = split_until_first_char(content_str, ':');
+        flush_header_block(&mut header_list, &mut header_block);
+
+        response.content_type = first_yml_key(content_str);
+        response.headers = header_list
+            .into_iter()
+            .map(|h| OpenApiHeader::from_yml_string(h))
+            .collect();
+
         response
+    }
+}
+
+// schließt den aktuell gesammelten Header-Block ab und legt ihn in die Liste,
+// falls er nicht leer ist
+fn flush_header_block(header_list: &mut Vec<String>, header_block: &mut String) {
+    if !header_block.is_empty() {
+        header_list.push(header_block.clone());
+        header_block.clear();
     }
 }
 
@@ -434,11 +641,26 @@ fn return_yml_after_key(yml: String, key: &str) -> String{
             to_return.push_str(l);
             to_return.push('\n');
         }
-        if starts_with_without_spaces(l, "content:") {building = true; }
+        if starts_with_without_spaces(l, key) {building = true; }
 
     }
 
     to_return
+}
+
+// liefert den Key der ersten nicht-leeren Zeile eines yml-Blocks, z.B. "application/json:" -> "application/json"
+fn first_yml_key(yml: String) -> String {
+    for line in yml.lines() {
+        let l = rm_starting_spaces(line.to_string());
+        if l.is_empty() { continue; }
+
+        return match l.find(':') {
+            Some(idx) => l[..idx].to_string(),
+            None => l,
+        };
+    }
+
+    String::new()
 }
 
 fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
@@ -481,21 +703,4 @@ fn yml_list_2_vec_by_separator(yml: String, separator: &str) -> Vec<String> {
 }
 fn yml_list_2_vec(yml: String) -> Vec<String> {
     yml_list_2_vec_by_separator(yml, "-")
-}
-
-fn split_until_first_char(str: String, c: char) -> (String, String) {
-    let mut fst = String::new();
-    let mut snd = String::new();
-
-    let mut is_fst = true;
-    for char in str.chars() {
-        if char == c && is_fst {
-            is_fst = false;
-            continue;
-        }
-        if is_fst { fst.push(char); }
-        else { snd.push(char); }
-    }
-
-    (fst, snd)
 }

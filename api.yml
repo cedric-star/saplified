@@ -1,51 +1,195 @@
-openapi: 3.0.4
+openapi: 3.0.3
 info:
-  title: my api
-  description: api description
-  version: 0.1.9
+  title: Test-API ohne Schemas
+  description: API mit verschiedenen Methoden, Bodies, Headern – komplett ohne schemas
+  version: 1.0.0
 servers:
-  - url: localhost:8080
-    description: lokales testen
-  - url: https://micedric.dpdns.org
-    description: prod server
+  - url: https://api.test.example/v1
 paths:
   /users:
     get:
-      summary: get all users
-      description: hallsjdflsajdlöfjsdljfljdf
+      summary: Benutzerliste abrufen
       responses:
         "200":
-          description: all good
+          description: Erfolgreiche Antwort
+          headers:
+            X-RateLimit-Remaining:
+              example: 45
+            X-Response-ID:
+              example: "resp-67890-xyz"
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  type: string
-        "403":
-          description: forbidden content
+              example:
+                - id: 1
+                  name: "Max Mustermann"
+                  email: "max@example.com"
+                  active: true
+                - id: 2
+                  name: "Erika Musterfrau"
+                  email: "erika@example.com"
+                  active: false
+        "500":
+          description: Interner Serverfehler
+          content:
+            application/json:
+              example:
+                error: "Datenbankverbindung fehlgeschlagen"
+                code: 500
     post:
-      summary: dinge
+      summary: Neuen Benutzer anlegen
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: array
-              items:
-                type: string
-  /locations:
-    get:
-      summary: get all locations
-      description: hasljddddddddddddddddsdljfljdf
+            example:
+              name: "Neuer Benutzer"
+              email: "neu@example.com"
+              password: "securePass123"
+              role: "admin"
+          application/xml:
+            example: |
+              <user>
+                <name>Neuer Benutzer</name>
+                <email>neu@example.com</email>
+                <role>admin</role>
+              </user>
       responses:
-        "200":
-          description: all goooooooood
+        "201":
+          description: Benutzer erfolgreich erstellt
+          headers:
+            Location:
+              example: "/users/42"
+            X-Created-At:
+              example: "2026-08-28T10:15:30Z"
           content:
             application/json:
-              schema:
-                type: array
-                items:
-                  type: string
+              example:
+                id: 42
+                name: "Neuer Benutzer"
+                email: "neu@example.com"
+                created: "2026-08-28T10:15:30Z"
+        "409":
+          description: Benutzer existiert bereits
+          content:
+            application/json:
+              example:
+                error: "E-Mail bereits registriert"
+                code: 409
+  /users/{userId}:
+    get:
+      summary: Einzelnen Benutzer abrufen
+      responses:
+        "200":
+          description: Benutzer gefunden
+          headers:
+            ETag:
+              example: '"abc123def"'
+          content:
+            application/json:
+              example:
+                id: 42
+                name: "Max Mustermann"
+                email: "max@example.com"
+                active: true
+                lastLogin: "2026-08-27T18:30:00Z"
+            application/xml:
+              example: |
+                <user>
+                  <id>42</id>
+                  <name>Max Mustermann</name>
+                  <email>max@example.com</email>
+                  <active>true</active>
+                </user>
         "404":
-          description: not foound
+          description: Benutzer nicht gefunden
+          content:
+            application/json:
+              example:
+                error: "Benutzer mit ID 42 nicht gefunden"
+                code: 404
+    put:
+      summary: Benutzer vollständig aktualisieren
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: "Aktualisierter Name"
+              email: "neu@example.com"
+              active: false
+      responses:
+        "200":
+          description: Benutzer aktualisiert
+          content:
+            application/json:
+              example:
+                id: 42
+                name: "Aktualisierter Name"
+                email: "neu@example.com"
+                active: false
+                updated: "2026-08-28T12:00:00Z"
+    delete:
+      summary: Benutzer löschen
+      responses:
+        "204":
+          description: Benutzer erfolgreich gelöscht (kein Body)
+        "404":
+          description: Benutzer nicht gefunden
+          content:
+            application/json:
+              example:
+                error: "Benutzer nicht gefunden"
+                code: 404
+  /files:
+    post:
+      summary: Datei hochladen
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            examples:
+              beispiel-1:
+                summary: Beispiel-Upload mit Textdatei
+                value:
+                  file: "Beispielinhalt der Datei"
+                  description: "Eine Beispiel-Beschreibung"
+                  tags: "test, demo"
+              beispiel-2:
+                summary: Beispiel mit Base64-Daten
+                value:
+                  file: "SGVsbG8gV29ybGQ="
+                  description: "Base64-kodierte Datei"
+      responses:
+        "201":
+          description: Datei erfolgreich hochgeladen
+          content:
+            application/json:
+              example:
+                fileId: "file-12345"
+                url: "https://api.test.example/v1/files/file-12345"
+                size: 1024
+                uploaded: "2026-08-28T12:30:00Z"
+  /events:
+    post:
+      summary: Event auslösen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              eventId: "evt-001"
+              payload:
+                userId: 42
+                action: "created"
+              timestamp: "2026-08-28T12:45:00Z"
+      responses:
+        "202":
+          description: Event akzeptiert
+          headers:
+            X-Event-Queue-Position:
+              example: 17
+          content:
+            application/json:
+              example:
+                status: "accepted"
+                queueId: "queue-9876"
