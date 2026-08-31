@@ -4,6 +4,8 @@ use openapi3_parser::open_api::*;
 use serde_yaml;
 
 use crate::file_handler;
+use crate::my_requests;
+use crate::my_requests::MyRequests;
 
 pub fn create_requests(path: &str) -> Vec<MyRequests> {
     let path = String::from(path);
@@ -30,7 +32,7 @@ pub fn create_requests(path: &str) -> Vec<MyRequests> {
             println!("Keine Pfade definiert");
         }
     }
-    exec();
+    my_requests::MyRequests::exec();
     Vec::new()
 }
 

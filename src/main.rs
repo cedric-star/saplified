@@ -6,6 +6,7 @@ use serde_yaml;
 
 mod fill_curl;
 mod file_handler;
+mod my_requests;
 
 pub const HTPP_METHODS: [&str; 9] = ["get", "post", "put", "delete", "head", "patch", "trace", "options", "connect"];
 

@@ -1,3 +1,5 @@
+use std::process::Command;
+
 pub struct MyRequests {
     server: String,
     headers: Vec<String>,
